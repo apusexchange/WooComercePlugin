@@ -22,7 +22,7 @@ class WC_ApusPayments {
 			self::includes();
 
 			add_filter( 'woocommerce_payment_gateways', array( __CLASS__, 'add_gateway' ) );
-			add_filter( 'plugin_action_links_' . plugin_basename( WC_APUSPAYMENTS_PLUGIN_FILE ), array( __CLASS__, 'plugin_action_links' ) );
+			add_filter( 'plugin_action_links_' . plugin_basename( WC_PAGSEGURO_PLUGIN_FILE ), array( __CLASS__, 'plugin_action_links' ) );
 		} else {
 			add_action( 'admin_notices', array( __CLASS__, 'woocommerce_missing_notice' ) );
 		}

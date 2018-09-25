@@ -145,11 +145,7 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 						'order_total_price'      => $this->get_order_total(),
 						'order_currency'  	     => get_woocommerce_currency(),
 						'order_currency_symbol'  => get_woocommerce_currency_symbol(),
-						'interest_free'      	 => __( 'interest free', 'woocommerce-apuspayments' ),
-						'invalid_card'       	 => __( 'Invalid card number.', 'woocommerce-apuspayments' ),
-						'invalid_credential' 	 => __( 'Invalid credential card number or password.', 'woocommerce-apuspayments' ),
 						'general_error'     	 => __( 'Unable to process the data from your card on the ApusPayments, please try again or contact us for assistance.', 'woocommerce-apuspayments' ),
-						'empty_installments' 	 => __( 'Select a number of installments.', 'woocommerce-apuspayments' ),
 					)
 				);
 			}
@@ -268,6 +264,8 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 	 * Payment fields.
 	 */
 	public function payment_fields() {
+		wp_enqueue_script( 'wc-credit-card-form' );
+
 		$description = $this->get_description();
 
 		if ( $description ) {
@@ -292,12 +290,148 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 	public function process_payment( $order_id ) {
 		$order = wc_get_order( $order_id );
 
-		$use_shipping = isset( $_POST['ship_to_different_address'] ) ? true : false;
+		$response = $this->api->do_payment_request( $order, $_POST );
 
-		return array(
-			'result'   => 'success',
-			'redirect' => add_query_arg( array( 'use_shipping' => $use_shipping ), $order->get_checkout_payment_url( true ) ),
+		$data = $response['data'];
+
+		if ( $data->transaction->txId ) {
+			$this->update_order_status( $order, $data );
+
+			return array(
+				'result'   => 'success',
+				'redirect' => $response['url']
+			);
+		} else {
+			wc_add_notice( $data->status->message, 'error' );
+
+			return array(
+				'result'   => 'fail',
+				'redirect' => ''
+			);
+		}
+	}
+
+	/**
+	 * Update order status.
+	 *
+	 * @param array $posted ApusPayments post data.
+	 */
+	public function update_order_status( $order, $response ) {
+		if ( isset( $order->order_key ) ) {
+			// Checks whether the invoice number matches the order.
+			if ( 'yes' === $this->debug ) {
+				$this->log->add( $this->id, 'ApusPayments payment status for order ' . $order->get_order_number() . ' is: ' . intval( $order->status ) );
+			}
+
+			$order_id = method_exists( $order, 'get_id' ) ? $order->get_id() : $order->id;
+
+			// Save meta data.
+			$this->save_payment_meta_data( $order, $response );
+
+			switch ( $order->get_status() ) {
+				case 'pending':
+					if ( method_exists( $order, 'get_status' ) && 'cancelled' === $order->get_status() ) {
+						$order->update_status( 'processing', __( 'ApusPayments: Payment approved.', 'woocommerce-apuspayments' ) );
+						wc_reduce_stock_levels( $order_id );
+					} else {
+						try {
+							$order->add_order_note( __( 'ApusPayments: Payment approved.', 'woocommerce-apuspayments' ) );
+							$order->payment_complete( $response->transaction->txId );							
+						} catch ( Exception $e ) {
+							die($e->getMessage());
+						}
+					}
+
+					break;
+				case 5:
+					$order->update_status( 'on-hold', __( 'ApusPayments: Payment came into dispute.', 'woocommerce-apuspayments' ) );
+					$this->send_email(
+						/* translators: %s: order number */
+						sprintf( __( 'Payment for order %s came into dispute', 'woocommerce-apuspayments' ), $order->get_order_number() ),
+						__( 'Payment in dispute', 'woocommerce-apuspayments' ),
+						/* translators: %s: order number */
+						sprintf( __( 'Order %s has been marked as on-hold, because the payment came into dispute in ApusPayments.', 'woocommerce-apuspayments' ), $order->get_order_number() )
+					);
+
+					break;
+				case 'approved':
+					$order->update_status( 'refunded', __( 'ApusPayments: Payment refunded.', 'woocommerce-apuspayments' ) );
+
+					$this->send_email(
+						/* translators: %s: order number */
+						sprintf( __( 'Payment for order %s refunded', 'woocommerce-apuspayments' ), $order->get_order_number() ),
+						__( 'Payment refunded', 'woocommerce-apuspayments' ),
+						/* translators: %s: order number */
+						sprintf( __( 'Order %s has been marked as refunded by ApusPayments.', 'woocommerce-apuspayments' ), $order->get_order_number() )
+					);
+
+					if ( function_exists( 'wc_increase_stock_levels' ) ) {
+						wc_increase_stock_levels( $order_id );
+					}
+
+					break;
+				case 'approved':
+					$order->update_status( 'cancelled', __( 'ApusPayments: Payment canceled.', 'woocommerce-apuspayments' ) );
+
+					if ( function_exists( 'wc_increase_stock_levels' ) ) {
+						wc_increase_stock_levels( $order_id );
+					}
+
+					break;
+
+				default:
+					break;
+			}
+		}
+	}
+
+	/**
+	 * Save payment meta data.
+	 *
+	 * @param WC_Order $order Order instance.
+	 * @param array    $response Response API data.
+	 */
+	protected function save_payment_meta_data( $order, $response ) {
+		$meta_data    = array();
+		$payment_data = array(
+			'type'         => '',
+			'method'       => '',
+			'installments' => '',
+			'link'         => '',
 		);
+
+		if ( isset( $response->buyer->email ) ) {
+			$meta_data[ __( 'Payer Email', 'woocommerce-apuspayments' ) ] = sanitize_text_field( (string) $response->buyer->email );
+		}
+		if ( isset( $response->buyer->name ) ) {
+			$meta_data[ __( 'Payer Name', 'woocommerce-apuspayments' ) ] = sanitize_text_field( (string) $response->buyer->name );
+		}		
+		if ( isset( $response->coin->name ) ) {
+			$meta_data[ __( 'Payment Blockchain', 'woocommerce-apuspayments' ) ] = $response->coin->name;
+		}
+		if ( isset( $response->coin->amount ) ) {
+			$meta_data[ __( 'Payments Amount', 'woocommerce-apuspayments' ) ] = $response->coin->amount;
+		}
+		if ( isset( $response->coin->fee ) ) {
+			$meta_data[ __( 'Payment Fee', 'woocommerce-apuspayments' ) ] = $response->coin->fee;
+		}
+		if ( isset( $response->transaction->txId ) ) {
+			$meta_data[ __( 'Payment TxID', 'woocommerce-apuspayments' ) ] = $response->transaction->txId;
+		}
+
+		$meta_data['_wc_apuspayments_payment_data'] = $payment_data;
+
+		// WooCommerce 3.0 or later.
+		if ( method_exists( $order, 'update_meta_data' ) ) {
+			foreach ( $meta_data as $key => $value ) {
+				$order->update_meta_data( $key, $value );
+			}
+			$order->save();
+		} else {
+			foreach ( $meta_data as $key => $value ) {
+				update_post_meta( $order->id, $key, $value );
+			}
+		}
 	}
 
 	/**
@@ -317,173 +451,6 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 		$response = $this->api->do_checkout_request( $order, $request_data );
 
 		include dirname( __FILE__ ) . '/views/html-receipt-page-error.php';
-	}
-	
-	/**
-	 * Save payment meta data.
-	 *
-	 * @param WC_Order $order Order instance.
-	 * @param array    $posted Posted data.
-	 */
-	protected function save_payment_meta_data( $order, $posted ) {
-		$meta_data    = array();
-		$payment_data = array(
-			'type'         => '',
-			'method'       => '',
-			'installments' => '',
-			'link'         => '',
-		);
-
-		if ( isset( $posted->sender->email ) ) {
-			$meta_data[ __( 'Payer email', 'woocommerce-apuspayments' ) ] = sanitize_text_field( (string) $posted->sender->email );
-		}
-		if ( isset( $posted->sender->name ) ) {
-			$meta_data[ __( 'Payer name', 'woocommerce-apuspayments' ) ] = sanitize_text_field( (string) $posted->sender->name );
-		}
-		if ( isset( $posted->paymentMethod->type ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.NotSnakeCaseMemberVar
-			$payment_data['type'] = intval( $posted->paymentMethod->type ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.NotSnakeCaseMemberVar
-
-			$meta_data[ __( 'Payment type', 'woocommerce-apuspayments' ) ] = $this->api->get_payment_name_by_type( $payment_data['type'] );
-		}
-		if ( isset( $posted->paymentMethod->code ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.NotSnakeCaseMemberVar
-			$payment_data['method'] = $this->api->get_payment_method_name( intval( $posted->paymentMethod->code ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.NotSnakeCaseMemberVar
-
-			$meta_data[ __( 'Payment method', 'woocommerce-apuspayments' ) ] = $payment_data['method'];
-		}
-		if ( isset( $posted->installmentCount ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.NotSnakeCaseMemberVar
-			$payment_data['installments'] = sanitize_text_field( (string) $posted->installmentCount ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.NotSnakeCaseMemberVar
-
-			$meta_data[ __( 'Installments', 'woocommerce-apuspayments' ) ] = $payment_data['installments'];
-		}
-		if ( isset( $posted->paymentLink ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.NotSnakeCaseMemberVar
-			$payment_data['link'] = sanitize_text_field( (string) $posted->paymentLink ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.NotSnakeCaseMemberVar
-
-			$meta_data[ __( 'Payment URL', 'woocommerce-apuspayments' ) ] = $payment_data['link'];
-		}
-		if ( isset( $posted->creditorFees->intermediationRateAmount ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.NotSnakeCaseMemberVar
-			$meta_data[ __( 'Intermediation Rate', 'woocommerce-apuspayments' ) ] = sanitize_text_field( (string) $posted->creditorFees->intermediationRateAmount ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.NotSnakeCaseMemberVar
-		}
-		if ( isset( $posted->creditorFees->intermediationFeeAmount ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.NotSnakeCaseMemberVar
-			$meta_data[ __( 'Intermediation Fee', 'woocommerce-apuspayments' ) ] = sanitize_text_field( (string) $posted->creditorFees->intermediationFeeAmount ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.NotSnakeCaseMemberVar
-		}
-
-		$meta_data['_wc_apuspayments_payment_data'] = $payment_data;
-
-		// WooCommerce 3.0 or later.
-		if ( method_exists( $order, 'update_meta_data' ) ) {
-			foreach ( $meta_data as $key => $value ) {
-				$order->update_meta_data( $key, $value );
-			}
-			$order->save();
-		} else {
-			foreach ( $meta_data as $key => $value ) {
-				update_post_meta( $order->id, $key, $value );
-			}
-		}
-	}
-
-	/**
-	 * Update order status.
-	 *
-	 * @param array $posted ApusPayments post data.
-	 */
-	public function update_order_status( $posted ) {
-		if ( isset( $posted->reference ) ) {
-			$id    = (int) str_replace( $this->invoice_prefix, '', $posted->reference );
-			$order = wc_get_order( $id );
-
-			// Check if order exists.
-			if ( ! $order ) {
-				return;
-			}
-
-			$order_id = method_exists( $order, 'get_id' ) ? $order->get_id() : $order->id;
-
-			// Checks whether the invoice number matches the order.
-			// If true processes the payment.
-			if ( $order_id === $id ) {
-				if ( 'yes' === $this->debug ) {
-					$this->log->add( $this->id, 'ApusPayments payment status for order ' . $order->get_order_number() . ' is: ' . intval( $posted->status ) );
-				}
-
-				// Save meta data.
-				$this->save_payment_meta_data( $order, $posted );
-
-				switch ( intval( $posted->status ) ) {
-					case 1:
-						$order->update_status( 'on-hold', __( 'ApusPayments: The buyer initiated the transaction, but so far the ApusPayments not received any payment information.', 'woocommerce-apuspayments' ) );
-
-						break;
-					case 2:
-						$order->update_status( 'on-hold', __( 'ApusPayments: Payment under review.', 'woocommerce-apuspayments' ) );
-
-						// Reduce stock for billets.
-						if ( function_exists( 'wc_reduce_stock_levels' ) ) {
-							wc_reduce_stock_levels( $order_id );
-						}
-
-						break;
-					case 3:
-						// Sometimes ApusPayments should change an order from cancelled to paid, so we need to handle it.
-						if ( method_exists( $order, 'get_status' ) && 'cancelled' === $order->get_status() ) {
-							$order->update_status( 'processing', __( 'ApusPayments: Payment approved.', 'woocommerce-apuspayments' ) );
-							wc_reduce_stock_levels( $order_id );
-						} else {
-							$order->add_order_note( __( 'ApusPayments: Payment approved.', 'woocommerce-apuspayments' ) );
-
-							// Changing the order for processing and reduces the stock.
-							$order->payment_complete( sanitize_text_field( (string) $posted->code ) );
-						}
-
-						break;
-					case 4:
-						$order->add_order_note( __( 'ApusPayments: Payment completed and credited to your account.', 'woocommerce-apuspayments' ) );
-
-						break;
-					case 5:
-						$order->update_status( 'on-hold', __( 'ApusPayments: Payment came into dispute.', 'woocommerce-apuspayments' ) );
-						$this->send_email(
-							/* translators: %s: order number */
-							sprintf( __( 'Payment for order %s came into dispute', 'woocommerce-apuspayments' ), $order->get_order_number() ),
-							__( 'Payment in dispute', 'woocommerce-apuspayments' ),
-							/* translators: %s: order number */
-							sprintf( __( 'Order %s has been marked as on-hold, because the payment came into dispute in ApusPayments.', 'woocommerce-apuspayments' ), $order->get_order_number() )
-						);
-
-						break;
-					case 6:
-						$order->update_status( 'refunded', __( 'ApusPayments: Payment refunded.', 'woocommerce-apuspayments' ) );
-						$this->send_email(
-							/* translators: %s: order number */
-							sprintf( __( 'Payment for order %s refunded', 'woocommerce-apuspayments' ), $order->get_order_number() ),
-							__( 'Payment refunded', 'woocommerce-apuspayments' ),
-							/* translators: %s: order number */
-							sprintf( __( 'Order %s has been marked as refunded by ApusPayments.', 'woocommerce-apuspayments' ), $order->get_order_number() )
-						);
-
-						if ( function_exists( 'wc_increase_stock_levels' ) ) {
-							wc_increase_stock_levels( $order_id );
-						}
-
-						break;
-					case 7:
-						$order->update_status( 'cancelled', __( 'ApusPayments: Payment canceled.', 'woocommerce-apuspayments' ) );
-
-						if ( function_exists( 'wc_increase_stock_levels' ) ) {
-							wc_increase_stock_levels( $order_id );
-						}
-
-						break;
-
-					default:
-						break;
-				}
-			} else {
-				if ( 'yes' === $this->debug ) {
-					$this->log->add( $this->id, 'Error: Order Key does not match with ApusPayments reference.' );
-				}
-			}
-		}
 	}
 
 	/**

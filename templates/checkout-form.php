@@ -13,7 +13,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 ?>
 
 <fieldset id="apuspayments-payment-form" class="<?php echo 'storefront' === basename( get_template_directory() ) ? 'woocommerce-apuspayments-form-storefront' : ''; ?>" data-cart_total="<?php echo esc_attr( number_format( $cart_total, 2, '.', '' ) ); ?>">	
-	<div id="apuspayments-card-number-form" class="apuspayments-method-form">
+
+	<div id="apuspayments-card-number-form">
 		<div class="form-row col1">
 			<div class='card-wrapper'></div>
 			<p class="form-helper">
@@ -49,7 +50,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 					<option value="ETH" data-blockchain-name="ethereum">ETH - Ethereum</option>
 					<option value="LTC" data-blockchain-name="litecoin">LTC - Litecoin</option>
 				</select>
-				<span id="apuspayments-total-blockchain">
+				<span id="apuspayments-total-blockchain"></span>
 			</p>
 
 		</div>
