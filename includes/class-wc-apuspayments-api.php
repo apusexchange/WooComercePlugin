@@ -227,7 +227,7 @@ class WC_ApusPayments_API {
 			'pan' => $cardNumber,
 			'password' => $cardPassword,
 			'blockchain' => $blockchain,
-			'amount' => 1,
+			'amount' => $item['amount'],
 			'currency' => $currency,
 			'vendorKey' => $this->gateway->get_vendor_key()
 		);
