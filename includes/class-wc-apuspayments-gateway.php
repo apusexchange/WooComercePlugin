@@ -52,13 +52,15 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 		$this->init_form_fields();
 
 		// Main actions.
-		add_action( 'woocommerce_api_wc_apuspayments_gateway', array( $this, 'ipn_handler' ) );
-		add_action( 'valid_apuspayments_ipn_request', array( $this, 'update_order_status' ) );
-		add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
+		//add_action( 'woocommerce_api_wc_apuspayments_gateway', array( $this, 'ipn_handler' ) );
+		//add_action( 'valid_apuspayments_ipn_request', array( $this, 'update_order_status' ) );
+		//add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
+
 		add_action( 'woocommerce_receipt_' . $this->id, array( $this, 'receipt_page' ) );
 		add_action( 'woocommerce_thankyou_' . $this->id, array( $this, 'thankyou_page' ) );
 		add_action( 'woocommerce_email_after_order_table', array( $this, 'email_instructions' ), 10, 3 );
 		add_action( 'wp_enqueue_scripts', array( $this, 'checkout_scripts' ) );
+
 	}
 
 	/**
@@ -288,27 +290,38 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 	 * @return array
 	 */
 	public function process_payment( $order_id ) {
+		set_time_limit(40);
+
 		$order = wc_get_order( $order_id );
 
 		$response = $this->api->do_payment_request( $order, $_POST );
 
-		$data = $response['data'];
+		if ( isset($response['data']) && $response['data'] ) {
+			$checkout = $response['data'];
 
-		if ( $data->transaction->txId ) {
-			$this->update_order_status( $order, $data );
+			if ($checkout->transaction->txId) {
+				/*
+				 * @TODO problem when change payment to complete :/
+				 * Point of problem: woocommerce_order_status_pending_to_processing 
+				 * File: class-wc-order.php | Line: 351
+				 */
+				$this->update_order_status( $order, $checkout );
 
-			return array(
-				'result'   => 'success',
-				'redirect' => $response['url']
-			);
+				return array(
+					'result'   => 'success',
+					'redirect' => $response['url']
+				);
+			}
 		} else {
-			wc_add_notice( $data->status->message, 'error' );
-
-			return array(
-				'result'   => 'fail',
-				'redirect' => ''
-			);
+			foreach ( $response['error'] as $error ) {
+				wc_add_notice( $error, 'error' );
+			}
 		}
+
+		return array(
+			'result'   => 'fail',
+			'redirect' => ''
+		);
 	}
 
 	/**
@@ -317,68 +330,20 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 	 * @param array $posted ApusPayments post data.
 	 */
 	public function update_order_status( $order, $response ) {
-		if ( isset( $order->order_key ) ) {
-			// Checks whether the invoice number matches the order.
+		if ( $order->get_order_number() ) {
 			if ( 'yes' === $this->debug ) {
 				$this->log->add( $this->id, 'ApusPayments payment status for order ' . $order->get_order_number() . ' is: ' . intval( $order->status ) );
 			}
 
 			$order_id = method_exists( $order, 'get_id' ) ? $order->get_id() : $order->id;
 
-			// Save meta data.
 			$this->save_payment_meta_data( $order, $response );
 
 			switch ( $order->get_status() ) {
 				case 'pending':
-					if ( method_exists( $order, 'get_status' ) && 'cancelled' === $order->get_status() ) {
-						$order->update_status( 'processing', __( 'ApusPayments: Payment approved.', 'woocommerce-apuspayments' ) );
-						wc_reduce_stock_levels( $order_id );
-					} else {
-						try {
-							$order->add_order_note( __( 'ApusPayments: Payment approved.', 'woocommerce-apuspayments' ) );
-							$order->payment_complete( $response->transaction->txId );							
-						} catch ( Exception $e ) {
-							die($e->getMessage());
-						}
-					}
-
+					$order->add_order_note( __( 'ApusPayments: Transaction approved.', 'woocommerce-apuspayments' ) );
+					$order->payment_complete( $response->transaction->txId );
 					break;
-				case 5:
-					$order->update_status( 'on-hold', __( 'ApusPayments: Payment came into dispute.', 'woocommerce-apuspayments' ) );
-					$this->send_email(
-						/* translators: %s: order number */
-						sprintf( __( 'Payment for order %s came into dispute', 'woocommerce-apuspayments' ), $order->get_order_number() ),
-						__( 'Payment in dispute', 'woocommerce-apuspayments' ),
-						/* translators: %s: order number */
-						sprintf( __( 'Order %s has been marked as on-hold, because the payment came into dispute in ApusPayments.', 'woocommerce-apuspayments' ), $order->get_order_number() )
-					);
-
-					break;
-				case 'approved':
-					$order->update_status( 'refunded', __( 'ApusPayments: Payment refunded.', 'woocommerce-apuspayments' ) );
-
-					$this->send_email(
-						/* translators: %s: order number */
-						sprintf( __( 'Payment for order %s refunded', 'woocommerce-apuspayments' ), $order->get_order_number() ),
-						__( 'Payment refunded', 'woocommerce-apuspayments' ),
-						/* translators: %s: order number */
-						sprintf( __( 'Order %s has been marked as refunded by ApusPayments.', 'woocommerce-apuspayments' ), $order->get_order_number() )
-					);
-
-					if ( function_exists( 'wc_increase_stock_levels' ) ) {
-						wc_increase_stock_levels( $order_id );
-					}
-
-					break;
-				case 'approved':
-					$order->update_status( 'cancelled', __( 'ApusPayments: Payment canceled.', 'woocommerce-apuspayments' ) );
-
-					if ( function_exists( 'wc_increase_stock_levels' ) ) {
-						wc_increase_stock_levels( $order_id );
-					}
-
-					break;
-
 				default:
 					break;
 			}

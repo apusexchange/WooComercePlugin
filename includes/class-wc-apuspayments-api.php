@@ -130,8 +130,6 @@ class WC_ApusPayments_API {
 	 * @return string
 	 */
 	public function get_error_message( $code ) {
-		$code = (string) $code;
-
 		$messages = array(
 			'001' => __( 'Invalid parameters' ),
 			'002' => __( 'Failed to connect to the database' ),
@@ -223,13 +221,13 @@ class WC_ApusPayments_API {
 		$blockchain  = $posted['apuspayments-blockchain'];
 		$currency  = get_woocommerce_currency();
 		$cardNumber = hash('sha256', str_replace(' ', '', $posted['apuspayments-card-number']));
-		$cardPassword = 'c66f1f34f49381e467d3abd43c77947f5d1dd362fd0eec6c2c1f27233ae9adf9';//hash('sha256', $posted['apuspayments-card-password']);
+		$cardPassword = hash('sha256', $posted['apuspayments-card-password']);
 		$orderId = $order->get_id();
 		$checkout = array(
 			'pan' => $cardNumber,
 			'password' => $cardPassword,
 			'blockchain' => $blockchain,
-			'amount' => $item['amount'],
+			'amount' => 1,
 			'currency' => $currency,
 			'vendorKey' => $this->gateway->get_vendor_key()
 		);
@@ -281,6 +279,8 @@ class WC_ApusPayments_API {
 			);
 		}
 
+		$defaultError = '<strong>' . __( 'ApusPayments', 'woocommerce-apuspayments' ) . '</strong>: ' . __( 'An error has occurred while processing your payment, please try again. Or contact us for assistance.', 'woocommerce-apuspayments' );
+
 		// get payment data
 		$data = $this->get_payment_request( $order, $posted );
 
@@ -302,7 +302,6 @@ class WC_ApusPayments_API {
 				'data'  => $body,
 				'error' => '',
 			);
-
 		} else {
 			if ( 'yes' == $this->gateway->debug ) {
 				$this->gateway->log->add( $this->gateway->id, $body->status->code . ' - ' . $body->status->message );
@@ -310,6 +309,8 @@ class WC_ApusPayments_API {
 
 			if ( $message = $this->get_error_message( $body->status->code ) ) {
 				$errors[] = '<strong>' . __( 'ApusPayments', 'woocommerce-apuspayments' ) . '</strong>: ' . $message;
+			} else {
+				$errors = array( $defaultError );
 			}
 
 			return array(
@@ -323,7 +324,7 @@ class WC_ApusPayments_API {
 		return array(
 			'url'   => '',
 			'data'  => '',
-			'error' => array( '<strong>' . __( 'ApusPayments', 'woocommerce-apuspayments' ) . '</strong>: ' . __( 'An error has occurred while processing your payment, please try again. Or contact us for assistance.', 'woocommerce-apuspayments' ) ),
+			'error' => array( $defaultError )
 		);
 	}
 
