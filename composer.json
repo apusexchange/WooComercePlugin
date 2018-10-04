@@ -1,24 +1,16 @@
 {
-	"name": "apuspayments/woocommerce",
-	"description": "ApusPayments for WooCommerce",
+	"name" : "apuspayments/woocommerce",
+	"description" : "ApusPayments for WooCommerce.",
 	"homepage": "https://github.com/apuspayments/woocomerceplugin",
-	"type": "library",
-	"license": "GPL-3.0-or-later",
-	"support": {
-		"forum": "http://wordpress.org/support/plugin/woocommerce-apuspayments",
-	},
-	"scripts": {
-		"phpcs": [
-			"phpcs -s -p"
-		],
-		"phpcbf": [
-			"phpcbf -p"
-		]
-	},
-	"extra": {
-		"scripts-description": {
-			"phpcs": "Analyze code against the WordPress coding standards with PHP_CodeSniffer",
-			"phpcbf": "Fix coding standards warnings/errors automatically with PHP Code Beautifier"
-		}
+	"type" : "library",
+	"license" : "GPL-3.0-or-later",
+	"authors": [
+      {
+        "name": "ApusPayments",
+        "email": "hello@apuspayments.com"
+      }
+    ],
+	"require" : {
+		"php" : ">=7.0"
 	}
 }
