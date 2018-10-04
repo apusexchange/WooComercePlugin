@@ -1,18 +1,11 @@
 {
 	"name": "apuspayments/woocommerce",
-	"description": "ApusPayments for WooCommerce.",
-	"homepage": "https://github.com/apuspayments/WooComercePlugin",
-	"type": "wordpress-plugin",
+	"description": "ApusPayments for WooCommerce",
+	"homepage": "https://github.com/apuspayments/woocomerceplugin",
+	"type": "library",
 	"license": "GPL-3.0-or-later",
-	"authors": [
-		{
-			"name": "ApusPayments",
-			"homepage": "https://apuspayments.com",
-			"role": "Developer"
-		}
-	],
 	"support": {
-		"forum": "https://wordpress.org/support/plugin/woocommerce",
+		"forum": "http://wordpress.org/support/plugin/woocommerce-apuspayments",
 	},
 	"scripts": {
 		"phpcs": [
