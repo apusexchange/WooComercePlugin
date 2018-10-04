@@ -300,11 +300,6 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 			$checkout = $response['data'];
 
 			if ($checkout->transaction->txId) {
-				/*
-				 * @TODO problem when change payment to complete :/
-				 * Point of problem: woocommerce_order_status_pending_to_processing 
-				 * File: class-wc-order.php | Line: 351
-				 */
 				$this->update_order_status( $order, $checkout );
 
 				return array(
@@ -341,7 +336,6 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 
 			switch ( $order->get_status() ) {
 				case 'pending':
-					$order->update_status( 'on-hold', __( 'ApusPayments: The buyer initiated the transaction', 'woocommerce-apuspayments' ) );
 					$order->add_order_note( __( 'ApusPayments: Transaction approved.', 'woocommerce-apuspayments' ) );
 					$order->payment_complete( $response->transaction->txId );
 					break;

@@ -2,7 +2,7 @@
 /**
  * WooCommerce ApusPayments main class
  *
- * @package WooCommerce_PagSeguro
+ * @package WooCommerce_ApusPayments
  */
 
 /**

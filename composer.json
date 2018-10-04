@@ -1,5 +1,5 @@
 {
-	"name": "apuspayments/woocomerceplugin",
+	"name": "apuspayments/woocommerce",
 	"description": "ApusPayments for WooCommerce.",
 	"homepage": "https://github.com/apuspayments/WooComercePlugin",
 	"type": "wordpress-plugin",
