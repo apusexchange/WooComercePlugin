@@ -341,6 +341,7 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 
 			switch ( $order->get_status() ) {
 				case 'pending':
+					$order->update_status( 'on-hold', __( 'ApusPayments: The buyer initiated the transaction', 'woocommerce-apuspayments' ) );
 					$order->add_order_note( __( 'ApusPayments: Transaction approved.', 'woocommerce-apuspayments' ) );
 					$order->payment_complete( $response->transaction->txId );
 					break;
