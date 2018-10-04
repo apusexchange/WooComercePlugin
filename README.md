@@ -4,12 +4,11 @@
 [![Latest Unstable Version](https://poser.pugx.org/apuspayments/woocommerce/v/unstable)](//packagist.org/packages/apuspayments/woocommerce)
 [![Total Downloads](https://poser.pugx.org/apuspayments/woocommerce/downloads)](https://packagist.org/packages/apuspayments/woocommerce)
 
-* Contributors: apuspayments
 * Tags: apuspayments, blockchain, bitcoin, litecoin, ethereum, decred, payment, criptocurrencies
 * Requires at least: 4.0
 * Tested up to: 4.9
 * Requires PHP: 7.0
-* Stable tag: trunk
+* Stable tag: 1.0.0
 * License: GPLv2 or later
 * License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
