@@ -1,5 +1,9 @@
 # WooCommerce ApusPayments #
 
+[![Latest Stable Version](https://poser.pugx.org/apuspayments/woocommerce/version)](https://packagist.org/packages/apuspayments/woocommerce)
+[![Latest Unstable Version](https://poser.pugx.org/apuspayments/woocommerce/v/unstable)](//packagist.org/packages/apuspayments/woocommerce)
+[![Total Downloads](https://poser.pugx.org/apuspayments/woocommerce/downloads)](https://packagist.org/packages/apuspayments/woocommerce)
+
 ## Description ##
 
 This plugin adds ApusPayments gateway to WooCommerce.
