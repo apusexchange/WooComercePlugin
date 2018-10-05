@@ -95,7 +95,7 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 	 * @return bool
 	 */
 	public function has_enable_any_blockchain() {
-		return count( $this->get_blockchains() ) > 0;
+		return $this->get_blockchains() ? count( $this->get_blockchains() ) > 0 : false;
 	}
 
 	/**
