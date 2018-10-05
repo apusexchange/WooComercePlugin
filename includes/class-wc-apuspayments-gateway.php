@@ -52,10 +52,9 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 		$this->init_form_fields();
 
 		// Main actions.
-		//add_action( 'woocommerce_api_wc_apuspayments_gateway', array( $this, 'ipn_handler' ) );
-		//add_action( 'valid_apuspayments_ipn_request', array( $this, 'update_order_status' ) );
-		//add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
-
+		add_action( 'woocommerce_api_wc_apuspayments_gateway', array( $this, 'ipn_handler' ) );
+		add_action( 'valid_apuspayments_ipn_request', array( $this, 'update_order_status' ) );
+		add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
 		add_action( 'woocommerce_receipt_' . $this->id, array( $this, 'receipt_page' ) );
 		add_action( 'woocommerce_thankyou_' . $this->id, array( $this, 'thankyou_page' ) );
 		add_action( 'woocommerce_email_after_order_table', array( $this, 'email_instructions' ), 10, 3 );
@@ -69,7 +68,10 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 	 * @return array
 	 */
 	public function get_supported_blockchains() {
-		return $this->api->get_blockchains_request();
+		if ($this->get_vendor_key()) {
+			return $this->api->get_blockchains_request();
+		}
+		return array('data' => array());
 	}
 
 	/**
@@ -78,15 +80,18 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 	 * @return bool
 	 */
 	public function using_supported_currency() {
-		$response = $this->api->get_currencies_request();
+		if ($this->get_vendor_key()) {
+			$response = $this->api->get_currencies_request();
 
-		$currencies = array();
+			$currencies = array();
 
-		foreach ($response['data'] as $currency) {
-			$currencies[] = $currency->symbol;
+			foreach ($response['data'] as $currency) {
+				$currencies[] = $currency->symbol;
+			}
+
+			return in_array(get_woocommerce_currency(), $currencies);			
 		}
-
-		return in_array(get_woocommerce_currency(), $currencies);
+		return false;
 	}
 
 	/**
@@ -95,7 +100,10 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 	 * @return bool
 	 */
 	public function has_enable_any_blockchain() {
-		return $this->get_blockchains() ? count( $this->get_blockchains() ) > 0 : false;
+		if ($this->get_vendor_key()) {
+			return $this->get_blockchains() ? count( $this->get_blockchains() ) > 0 : false;			
+		}
+		return false;
 	}
 
 	/**
@@ -124,10 +132,11 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 	 * @return bool
 	 */
 	public function is_available() {
-		// Test if is valid for use.
-		$available = 'yes' === $this->get_option( 'enabled' ) && '' !== $this->get_vendor_key() && $this->using_supported_currency() && $this->has_enable_any_blockchain();
-
-		return $available;
+		if ('yes' === $this->get_option( 'enabled' )) {
+			if ('' == $this->get_vendor_key()) return false;
+			if (!$this->using_supported_currency()) return false;
+			if (!$this->has_enable_any_blockchain()) return false;
+		}
 	}
 
 	/**
