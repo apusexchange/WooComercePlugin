@@ -32,7 +32,7 @@
 defined( 'ABSPATH' ) || exit;
 
 // Plugin constants.
-define( 'WC_APUSPAYMENTS_VERSION', '2.13.1' );
+define( 'WC_APUSPAYMENTS_VERSION', '1.0.0' );
 define( 'WC_APUSPAYMENTS_PLUGIN_FILE', __FILE__ );
 
 if ( ! class_exists( 'WC_APUSPAYMENTS' ) ) {
