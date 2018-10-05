@@ -297,6 +297,10 @@ class WC_ApusPayments_API {
 				$this->gateway->log->add( $this->gateway->id, $body->status->message . ' TXID: ' . $body->transaction->txId );
 			}
 
+			$order_id = method_exists( $order, 'get_id' ) ? $order->get_id() : $order->id;
+
+			$body->orderId = $order_id;
+
 			return array(
 				'url'   => $this->gateway->get_return_url( $order ),
 				'data'  => $body,

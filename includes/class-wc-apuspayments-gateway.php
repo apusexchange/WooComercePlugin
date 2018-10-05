@@ -52,8 +52,6 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 		$this->init_form_fields();
 
 		// Main actions.
-		add_action( 'woocommerce_api_wc_apuspayments_gateway', array( $this, 'ipn_handler' ) );
-		add_action( 'valid_apuspayments_ipn_request', array( $this, 'update_order_status' ) );
 		add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
 		add_action( 'woocommerce_receipt_' . $this->id, array( $this, 'receipt_page' ) );
 		add_action( 'woocommerce_thankyou_' . $this->id, array( $this, 'thankyou_page' ) );
@@ -137,6 +135,7 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 			if (!$this->using_supported_currency()) return false;
 			if (!$this->has_enable_any_blockchain()) return false;
 		}
+		return true;
 	}
 
 	/**
@@ -200,13 +199,13 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 				'type'        => 'text',
 				'description' => __( 'This controls the title which the user sees during checkout.', 'woocommerce-apuspayments' ),
 				'desc_tip'    => true,
-				'default'     => __( 'ApusPayments', 'woocommerce-apuspayments' ),
+				'default'     => 'ApusPayments',
 			),
 			'description'          => array(
 				'title'       => __( 'Description', 'woocommerce-apuspayments' ),
 				'type'        => 'textarea',
 				'description' => __( 'This controls the description which the user sees during checkout.', 'woocommerce-apuspayments' ),
-				'default'     => __( 'Pay using cryptocurrency', 'woocommerce-apuspayments' ),
+				'default'     => 'Pay using cryptocurrency',
 			),
 			'integration'          => array(
 				'title'       => __( 'Integration', 'woocommerce-apuspayments' ),
@@ -275,8 +274,6 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 	 * Payment fields.
 	 */
 	public function payment_fields() {
-		wp_enqueue_script( 'wc-credit-card-form' );
-
 		$description = $this->get_description();
 
 		if ( $description ) {
@@ -309,7 +306,7 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 			$checkout = $response['data'];
 
 			if ($checkout->transaction->txId) {
-				$this->update_order_status( $order, $checkout );
+				$this->update_order_status( $checkout );
 
 				return array(
 					'result'   => 'success',
@@ -333,24 +330,31 @@ class WC_ApusPayments_Gateway extends WC_Payment_Gateway {
 	 *
 	 * @param array $posted ApusPayments post data.
 	 */
-	public function update_order_status( $order, $response ) {
-		if ( $order->get_order_number() ) {
-			if ( 'yes' === $this->debug ) {
-				$this->log->add( $this->id, 'ApusPayments payment status for order ' . $order->get_order_number() . ' is: ' . intval( $order->status ) );
-			}
+	public function update_order_status( $response ) {
+		if ( 'yes' === $this->debug ) {
+			$this->log->add( $this->id, 'ApusPayments payment status for order ' . $order->get_order_number() . ' is: ' . intval( $order->status ) );
+		}
 
-			$order_id = method_exists( $order, 'get_id' ) ? $order->get_id() : $order->id;
+		$id = (int) $response->orderId;
 
-			$this->save_payment_meta_data( $order, $response );
+		$order = wc_get_order( $id );
 
-			switch ( $order->get_status() ) {
-				case 'pending':
-					$order->add_order_note( __( 'ApusPayments: Transaction approved.', 'woocommerce-apuspayments' ) );
-					$order->payment_complete( $response->transaction->txId );
-					break;
-				default:
-					break;
-			}
+		// Check if order exists.
+		if ( ! $order ) {
+			return;
+		}
+
+		$order_id = method_exists( $order, 'get_id' ) ? $order->get_id() : $order->id;
+
+		$this->save_payment_meta_data( $order, $response );
+
+		switch ( $order->get_status() ) {
+			case 'pending':
+				$order->add_order_note( __( 'ApusPayments: Transaction approved.', 'woocommerce-apuspayments' ) );
+				$order->payment_complete( $response->transaction->txId );
+				break;
+			default:
+				break;
 		}
 	}
 
